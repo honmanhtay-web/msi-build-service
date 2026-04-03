@@ -29,12 +29,13 @@ const SynologyAdapter    = require("./adapters/SynologyAdapter");
  *
  * Cách dùng:
  *   const manager = new UploadManager(serviceConfig);
- *   await manager.uploadAll({
- *     msiFilePath,
- *     msiFileName,
- *     meta: { repoId, pushId, version },
- *     statusReporter,
- *   });
+ *
+ *   // Kiểm tra trước khi build (tránh build lại nếu đã có):
+ *   const allExist = await manager.checkAllExist("Setup-App.v1.2.3.msi");
+ *   if (allExist) { ... setSkipped(); return; }
+ *
+ *   // Upload sau khi build:
+ *   const { allSkipped } = await manager.uploadAll({ msiFilePath, msiFileName, meta, statusReporter });
  */
 class UploadManager {
   /**
@@ -46,20 +47,63 @@ class UploadManager {
   }
 
   /**
+   * Kiểm tra file đã tồn tại trên TẤT CẢ enabled targets chưa.
+   * Dùng trước khi build để quyết định có cần build lại không.
+   *
+   * @param {string} msiFileName - tên file cần kiểm tra
+   * @returns {Promise<boolean>} true nếu TẤT CẢ adapters đều đã có file
+   */
+  async checkAllExist(msiFileName) {
+    if (this._adapters.length === 0) {
+      logger.warn("[UploadManager] checkAllExist: no adapters enabled — returning false", { machineId: MACHINE_ID });
+      return false;
+    }
+
+    logger.info("[UploadManager] checkAllExist: checking all targets...", {
+      machineId: MACHINE_ID,
+      msiFileName,
+      targets: this._adapters.map((a) => a.getName()),
+    });
+
+    const results = await Promise.all(
+      this._adapters.map(async (adapter) => {
+        try {
+          const exists = await adapter.checkExists(msiFileName);
+          logger.debug(`[UploadManager] checkAllExist: ${adapter.getName()} → ${exists}`, { machineId: MACHINE_ID });
+          return exists;
+        } catch (err) {
+          // Nếu check lỗi → coi như chưa có để không bỏ qua build nhầm
+          logger.warn(`[UploadManager] checkAllExist: ${adapter.getName()} check failed — treating as not exist`, {
+            machineId: MACHINE_ID,
+            error: err.message,
+          });
+          return false;
+        }
+      })
+    );
+
+    const allExist = results.every(Boolean);
+    logger.info(`[UploadManager] checkAllExist result: ${allExist} (per-adapter: ${results.join(", ")})`, {
+      machineId: MACHINE_ID,
+    });
+    return allExist;
+  }
+
+  /**
    * Upload MSI lên tất cả enabled targets song song
    * @param {object} params
    * @param {string} params.msiFilePath    - absolute path tới file .msi
    * @param {string} params.msiFileName    - tên file (dùng để checkExists)
    * @param {object} params.meta           - { repoId, pushId, version }
    * @param {object} params.statusReporter - instance của StatusReporter
-   * @returns {Promise<void>}
+   * @returns {Promise<{allSkipped: boolean}>} allSkipped=true nếu tất cả adapters đều skip (file đã có)
    */
   async uploadAll({ msiFilePath, msiFileName, meta, statusReporter }) {
     const ctx = { machineId: MACHINE_ID, ...meta, msiFileName };
 
     if (this._adapters.length === 0) {
       logger.warn("[UploadManager] No upload adapters enabled — skipping all uploads", ctx);
-      return;
+      return { allSkipped: false };
     }
 
     logger.info("[UploadManager] Starting parallel upload", {
@@ -68,19 +112,26 @@ class UploadManager {
     });
 
     // Chạy tất cả song song — allSettled đảm bảo không bị block khi 1 adapter fail
-    await Promise.allSettled(
+    const outcomes = await Promise.allSettled(
       this._adapters.map((adapter) =>
         this._handleAdapter(adapter, msiFilePath, msiFileName, meta, statusReporter, ctx)
       )
     );
 
-    logger.info("[UploadManager] All uploads settled", ctx);
+    // Kiểm tra tất cả có phải "skipped" không (để caller quyết định setSkipped vs setDone)
+    const allSkipped = outcomes.every(
+      (o) => o.status === "fulfilled" && o.value?.uploadStatus === "skipped"
+    );
+
+    logger.info("[UploadManager] All uploads settled", { ...ctx, allSkipped });
+    return { allSkipped };
   }
 
   // ─── Private ──────────────────────────────────────────────────────────────
 
   /**
    * Xử lý 1 adapter: checkExists → upload → report
+   * @returns {Promise<{uploadStatus: "done"|"skipped"|"failed"}>}
    */
   async _handleAdapter(adapter, msiFilePath, msiFileName, meta, statusReporter, ctx) {
     const name = adapter.getName();
@@ -97,7 +148,7 @@ class UploadManager {
           error:  "",
           doneAt: Date.now(),
         });
-        return;
+        return { uploadStatus: "skipped" };
       }
 
       // 2. Upload
@@ -112,6 +163,7 @@ class UploadManager {
       });
 
       logger.info(`[UploadManager] ${name}: upload done`, { ...adapterCtx, url: result.url });
+      return { uploadStatus: "done" };
 
     } catch (err) {
       logger.error(`[UploadManager] ${name}: upload failed`, { ...adapterCtx, error: err.message });
@@ -123,6 +175,7 @@ class UploadManager {
         error:  err.message,
         doneAt: Date.now(),
       });
+      return { uploadStatus: "failed" };
     }
   }
 

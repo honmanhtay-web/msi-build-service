@@ -4,6 +4,34 @@
 
 ---
 
+## [2026-04-03] — Phase 6: Bug fixes, missing features và file thiếu
+
+### Fixed — Bugs
+
+- **`src/advinst/AdvinstBuilder.js`**: `const fs = require("path")` sai → sửa thành `require("fs")`; thống nhất dùng tên `fs` thay vì `fss` cho module fs
+- **`scripts/test-advinst-build.js`**: `const { ConfigResolver } = require(...)` sai (named destructuring) → sửa thành `const ConfigResolver = require(...)` vì module export class trực tiếp; không phải named export
+- **`src/git/CloneManager.js`**: Fetch incremental không inject auth token → thêm `_setRemoteUrl()` cập nhật `remote origin` URL (có token mới) trước mỗi lần `git fetch`; comment trong code nói sẽ làm nhưng không implement
+
+### Added — Missing features
+
+- **`src/upload/UploadManager.checkAllExist(msiFileName)`**: Method mới kiểm tra tất cả enabled adapters, trả về `true` nếu TẤT CẢ đều có file. Dùng `Promise.all` với catch individual — 1 adapter lỗi không block các adapter khác, coi như "chưa có" để an toàn
+- **`src/upload/UploadManager.uploadAll()`**: Thêm return value `{ allSkipped: boolean }` để caller biết kết quả tổng thể
+- **`src/index.js` — Pre-build skip check**: Implement đúng theo `ARCHITECTURE.md` mục 3.2 — sau clone, resolve tentative config, gọi `checkAllExist()`. Nếu tất cả targets đã có file → `setSkipped()` và return sớm, không build lại. Nếu resolve fail (chưa có advinst.exe, adapter chưa config) → log warn và tiếp tục build bình thường
+- **`src/index.js` — Post-upload allSkipped check**: Sau `uploadAll`, nếu tất cả uploads đều `skipped` (file đã có khi bắt đầu upload) → `setSkipped()` thay vì `setDone()`; giải quyết edge case race condition giữa pre-build check và lúc upload thật sự
+
+### Added — Missing files
+
+- **`config/service.config.json`**: File tồn tại trong documents nhưng đặt sai path (`src/utils/config/` và root). `src/index.js` require tại `../config/service.config.json` (= `config/service.config.json`). File đã được tạo đúng đường dẫn
+- **`.aip.json.example`**: File config per-project mà `ConfigResolver` tìm kiếm trong repo của từng app cần build. Không có file mẫu nào → developer không biết cần đặt gì. File example đã được tạo với đầy đủ comments giải thích từng field
+- **`.env.example`**: Bổ sung `GIT_WORK_DIRS_ROOT` và `BUILD_OUTPUT_DIR` còn thiếu — cả hai được `CloneManager` và `AdvinstBuilder` đọc từ env nhưng không có trong example
+
+### Notes
+
+- Pre-build skip check dùng tentative filename (không có assemblyMeta) — chính xác 100% nếu project đặt `msiFileName` cố định trong `.aip.json`; có thể miss nếu filename chứa version động từ exe. Đây là trade-off chấp nhận được vì trường hợp worst case chỉ là build thêm 1 lần, sau đó `uploadAll` sẽ skip tất cả và đặt status `skipped`
+- `ConfigResolver` vẫn export trực tiếp `module.exports = ConfigResolver` (không phải named export) — nhất quán với tất cả module khác trong codebase
+
+---
+
 ## [2026-04-03] — Phase 5: Test scripts và Windows service installer
 
 ### Added
@@ -26,8 +54,6 @@
 - Tất cả scripts đều dùng color-coded output: xanh = OK, đỏ = FAIL, vàng = WARN, cyan = INFO
 - Scripts test dùng `process.exit(0/1)` để CI/CD có thể detect kết quả
 - `install-windows-service.js` phải chạy với quyền Administrator
-
----
 
 ---
 
@@ -67,12 +93,6 @@
 - `SynologyAdapter` dùng login/logout mỗi lần upload thay vì giữ session — đơn giản hơn, tránh session timeout
 - `OneDriveAdapter` tự phân nhánh small/large upload dựa trên file size 4MB threshold của Graph API
 
-### Notes
-
-- Pipeline đầy đủ: `pending` → `claimed` → `building` → `done`/`failed`
-- Tất cả secrets vẫn qua `.env` — không có gì hard-code
-- Phase tiếp theo: scripts test (`test-firebase-connection.js`, `test-simulate-job.js`, etc.)
-
 ---
 
 ## [2026-04-03] — Init: Thiết kế kiến trúc và tài liệu hệ thống
@@ -87,17 +107,3 @@
 - `.env.example` — Mẫu đầy đủ tất cả env vars có prefix chuẩn
 - `package.json` — Dependencies: firebase-admin, AWS SDK v3, Graph API, googleapis, axios
 - `.gitignore` — Loại trừ .env, .work-dirs, .oAdvBuild, logs
-
-### Decisions
-
-- Dùng Firebase Transaction để claim job, tránh race condition multi-machine
-- Dùng `Promise.allSettled` cho upload song song — 1 target fail không block target khác
-- Git shallow clone `--depth=1 --filter=blob:none` cho incremental fetch hiệu quả
-- Adapter pattern cho upload — thêm target mới không sửa code cũ
-- Cleanup TTL chạy mỗi 60 phút tại mỗi service instance — không cần service riêng
-- Refactor `oAdvBuild.js` và `oAssembly.js` thành modules độc lập, bỏ hard-code path và internal deps
-
-### Notes
-
-- Phase này chỉ là thiết kế và tài liệu — chưa có code thực thi
-- Phase tiếp theo: implement từng module theo thứ tự trong DEPLOYMENT.md mục 6

@@ -1,6 +1,6 @@
 // Path: scripts/test-advinst-build.js
 // Purpose: Test AdvinstBuilder độc lập — nhận workDir đã có sẵn, build MSI và in kết quả
-// Dependencies: dotenv, src/advinst/AdvinstBuilder
+// Dependencies: dotenv, src/advinst/AdvinstBuilder, src/advinst/ConfigResolver
 // Last Updated: 2026-04-03
 //
 // Cách dùng:
@@ -43,9 +43,11 @@ const parseArgs = () => {
 
   const serviceConfig = require("../config/service.config.json");
 
-  // Kiểm tra advinst.exe trước
-  const { ConfigResolver } = require("../src/advinst/ConfigResolver");
+  // ✅ FIX: ConfigResolver export là class trực tiếp, không phải named export
+  const ConfigResolver = require("../src/advinst/ConfigResolver");
   const resolver = new ConfigResolver(serviceConfig);
+
+  // Kiểm tra advinst.exe trước
   let advinstExePath;
   try {
     advinstExePath = resolver.detectAdvinstExe(workDir);

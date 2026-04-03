@@ -24,6 +24,7 @@ const JobQueue         = require("./queue/JobQueue");
 const CloneManager     = require("./git/CloneManager");
 const AssemblyReader   = require("./assembly/AssemblyReader");
 const AdvinstBuilder   = require("./advinst/AdvinstBuilder");
+const ConfigResolver   = require("./advinst/ConfigResolver");
 const UploadManager    = require("./upload/UploadManager");
 
 // ─── Load config ──────────────────────────────────────────────────────────────
@@ -94,26 +95,64 @@ const runBuildPipeline = async ({ repoId, pushId, jobData, reporter }) => {
   const cloner  = new CloneManager({ workDirsRoot: serviceConfig.git.workDirsRoot });
   const workDir = await cloner.syncRepo({ repoId, repoUrl, branch, commitSha });
 
-  // ── Step 2: Build MSI ─────────────────────────────────────────────────────
-  logger.info("[Pipeline] Step 2: AdvinstBuilder", ctx);
+  // ── Step 2: Pre-build skip check ──────────────────────────────────────────
+  // Resolve config sơ bộ (không có assemblyMeta) để lấy tentative msiFileName.
+  // Nếu project đặt msiFileName cố định trong .aip.json thì check này chính xác 100%.
+  // Nếu filename có version từ exe thì filename tentative dùng fallback "1.0.0.0" —
+  // trường hợp này check có thể không khớp, chấp nhận build thêm 1 lần.
+  logger.info("[Pipeline] Step 2: Pre-build skip check", ctx);
+  const uploader = new UploadManager(serviceConfig);
+  const resolver = new ConfigResolver(serviceConfig);
+
+  let tentativeMsiFileName = null;
+  try {
+    const tentative = await resolver.resolve({
+      workDir,
+      buildOutputDir: "",
+      assemblyMeta: null,
+    });
+    tentativeMsiFileName = tentative.msiFileName;
+
+    const allExist = await uploader.checkAllExist(tentativeMsiFileName);
+    if (allExist) {
+      logger.info("[Pipeline] All targets already have the MSI — marking job as skipped", {
+        ...ctx, msiFileName: tentativeMsiFileName,
+      });
+      await reporter.setSkipped();
+      return;
+    }
+  } catch (err) {
+    // Nếu resolve hoặc check lỗi (vd: advinst.exe chưa có, adapter chưa config) → tiếp tục build
+    logger.warn("[Pipeline] Pre-build check failed — proceeding with build", {
+      ...ctx, error: err.message,
+    });
+  }
+
+  // ── Step 3: Build MSI ─────────────────────────────────────────────────────
+  logger.info("[Pipeline] Step 3: AdvinstBuilder", ctx);
   const builder    = new AdvinstBuilder(serviceConfig);
   const buildResult = await builder.build({ repoId, pushId, workDir });
 
   const { msiFilePath, msiFileName, version } = buildResult;
 
-  // ── Step 3: Upload song song ───────────────────────────────────────────────
-  logger.info("[Pipeline] Step 3: UploadManager", ctx);
-  const uploader = new UploadManager(serviceConfig);
-  await uploader.uploadAll({
+  // ── Step 4: Upload song song ───────────────────────────────────────────────
+  logger.info("[Pipeline] Step 4: UploadManager", ctx);
+  const { allSkipped } = await uploader.uploadAll({
     msiFilePath,
     msiFileName,
     meta: { repoId, pushId, version },
     statusReporter: reporter,
   });
 
-  // ── Step 4: Done ───────────────────────────────────────────────────────────
-  await reporter.setDone({ version, msiFileName });
-  logger.info("[Pipeline] Job completed successfully", { ...ctx, version, msiFileName });
+  // ── Step 5: Done / Skipped ────────────────────────────────────────────────
+  // allSkipped = true khi file đã có trên tất cả adapters (build xong nhưng tất cả upload bị skip)
+  if (allSkipped) {
+    logger.info("[Pipeline] All uploads skipped (file already existed on all targets)", ctx);
+    await reporter.setSkipped();
+  } else {
+    await reporter.setDone({ version, msiFileName });
+    logger.info("[Pipeline] Job completed successfully", { ...ctx, version, msiFileName });
+  }
 };
 
 // ─── Khởi động service ────────────────────────────────────────────────────────

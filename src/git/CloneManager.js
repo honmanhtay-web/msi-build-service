@@ -5,7 +5,7 @@
 
 "use strict";
 
-const { execSync, spawnSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const fs   = require("fs");
 const path = require("path");
 
@@ -18,22 +18,14 @@ const { isDir, ensureDir } = require("../utils/pathUtils");
  *
  * Chiến lược:
  *   - Lần đầu: shallow clone (--depth=1 --filter=blob:none) → checkout
- *   - Lần sau: fetch --depth=1 → reset --hard origin/{branch}
+ *   - Lần sau: cập nhật remote URL (có token mới) → fetch --depth=1 → reset --hard
  *   - Nếu fetch/reset fail → xóa cache → clone lại (1 lần retry duy nhất)
  *   - Nếu clone lại vẫn fail → throw để job được đánh dấu failed
  *
  * Auth:
  *   - Inject GIT_TOKEN vào URL: https://{user}:{token}@github.com/org/repo.git
+ *   - Cập nhật remote origin URL mỗi lần fetch để token luôn mới
  *   - Không lưu credential vào global git config
- *
- * Cách dùng:
- *   const cloner = new CloneManager({ workDirsRoot: ".work-dirs" });
- *   const workDir = await cloner.syncRepo({
- *     repoId:    "dh-hospital-pharmacy",
- *     repoUrl:   "https://github.com/org/repo",
- *     branch:    "main",
- *     commitSha: "abc123",
- *   });
  */
 class CloneManager {
   /**
@@ -67,6 +59,9 @@ class CloneManager {
     const isExisting = this._isGitRepo(workDir);
 
     if (isExisting) {
+      // ✅ FIX: Cập nhật remote URL với token mới trước khi fetch
+      this._setRemoteUrl(workDir, authUrl, ctx);
+
       // Thử incremental fetch
       const fetchOk = this._tryFetch(workDir, branch, ctx);
       if (!fetchOk) {
@@ -100,6 +95,22 @@ class CloneManager {
   }
 
   /**
+   * Cập nhật remote origin URL — đảm bảo token luôn mới với mỗi lần sync
+   * ✅ FIX: Thêm method này để giải quyết vấn đề token expire khi fetch incremental
+   */
+  _setRemoteUrl(workDir, authUrl, ctx) {
+    try {
+      this._exec(["git", "-C", workDir, "remote", "set-url", "origin", authUrl], {
+        ctx,
+        label: "git remote set-url",
+      });
+    } catch (err) {
+      // Không throw — nếu fail thì fetch vẫn sẽ dùng URL cũ
+      logger.warn("[CloneManager] Could not update remote URL", { ...ctx, error: err.message });
+    }
+  }
+
+  /**
    * Shallow clone với sparse-checkout để bỏ qua binary lớn
    */
   _doClone(authUrl, workDir, branch, ctx) {
@@ -130,17 +141,12 @@ class CloneManager {
   }
 
   /**
-   * Incremental fetch + xác nhận remote có commitSha
+   * Incremental fetch
    * @returns {boolean} true nếu fetch thành công
    */
   _tryFetch(workDir, branch, ctx) {
     logger.info("[CloneManager] Fetching incremental...", ctx);
     try {
-      // Cập nhật auth URL trong remote (token có thể đã thay đổi)
-      // → Không lưu token vào git config — dùng env GIT_ASKPASS pattern
-      // → Nhưng để đơn giản: set remote url mỗi lần fetch
-      // (thực hiện ở _resetHard qua HTTPS URL có token)
-
       this._exec(
         ["git", "-C", workDir, "fetch", "origin", `${branch}`, "--depth=1", "--no-tags"],
         { ctx, label: "git fetch" }
@@ -188,17 +194,11 @@ class CloneManager {
       return repoUrl;
     }
 
-    // Chèn credentials vào URL
     return repoUrl.replace(/^(https?:\/\/)/, `$1${encodeURIComponent(username)}:${encodeURIComponent(token)}@`);
   }
 
   /**
    * Chạy lệnh đồng bộ — throw nếu exit code != 0
-   * @param {string[]} args   - [command, ...args]
-   * @param {object}   opts
-   * @param {string}   opts.cwd   - working directory
-   * @param {object}   opts.ctx   - log context
-   * @param {string}   opts.label - tên bước để log
    */
   _exec(args, { cwd = undefined, ctx = {}, label = "" } = {}) {
     const [cmd, ...rest] = args;
@@ -206,7 +206,6 @@ class CloneManager {
       cwd,
       stdio: "pipe",
       encoding: "utf8",
-      // Ẩn token khỏi log
       env: { ...process.env },
     });
 
@@ -214,7 +213,6 @@ class CloneManager {
     const stderr = (result.stderr || "").trim();
 
     if (result.status !== 0) {
-      // Ẩn token khỏi message lỗi
       const safeStderr = this._redactToken(stderr);
       const msg = `[CloneManager] '${label}' failed (exit ${result.status}): ${safeStderr}`;
       logger.error(msg, ctx);

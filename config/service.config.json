@@ -1,0 +1,66 @@
+{
+  "_path": "config/service.config.json",
+  "_purpose": "Config tĩnh cho MSI Build Service — không chứa secrets, commit được vào git. Secrets đặt trong .env",
+
+  "advinst": {
+    "exePath": "",
+    "fallbackPaths": [
+      "C:/Program Files (x86)/Caphyon/Advanced Installer 21.3/bin/x86/advinst.exe",
+      "C:/Program Files (x86)/Caphyon/Advanced Installer 22.0/bin/x86/advinst.exe",
+      "C:/Program Files (x86)/Caphyon/Advanced Installer/bin/x86/advinst.exe"
+    ],
+    "scanDirs": [".advinst", ".bin-advinst", "advinst", "bin-advinst"],
+    "defaultTimeoutSeconds": 300
+  },
+
+  "git": {
+    "workDirsRoot": ".work-dirs",
+    "cloneDepth": 1,
+    "retryOnCorrupt": true
+  },
+
+  "build": {
+    "outputDirRoot": ".oAdvBuild",
+    "maxConcurrent": 2
+  },
+
+  "upload": {
+    "targets": {
+      "s3": {
+        "enabled": false,
+        "keyPrefix": "releases/"
+      },
+      "onedrive": {
+        "enabled": false,
+        "folderPath": "/MSI-Releases"
+      },
+      "gdrive": {
+        "enabled": false,
+        "folderId": ""
+      },
+      "nas": {
+        "enabled": false,
+        "shareFolder": "/MSI-Releases"
+      }
+    }
+  },
+
+  "cleanup": {
+    "intervalMinutes": 60,
+    "ttl": {
+      "doneDays": 7,
+      "failedDays": 7,
+      "pendingDays": 30,
+      "stuckHours": 2
+    }
+  },
+
+  "firebase": {
+    "buildQueuePath": "build-queue"
+  },
+
+  "logging": {
+    "level": "info",
+    "dir": "logs"
+  }
+}

@@ -1,0 +1,47 @@
+// Path: .aip.json.example  (copy thành .aip.json, đặt trong repo của từng project cần build MSI)
+// Purpose: Config per-project cho MSI Build Service — chỉ định .aip file, exe chính, tên MSI output
+// Last Updated: 2026-04-03
+//
+// Cách dùng:
+//   1. Copy file này thành `.aip.json` và đặt ở root của repo cần build
+//   2. Commit vào git (không chứa secrets)
+//   3. MSI Build Service sẽ tự đọc khi build
+//
+// Tất cả fields đều OPTIONAL — service có thể tự detect nếu không có file này,
+// nhưng đặt file sẽ cho kết quả chính xác và ổn định hơn.
+
+{
+  // Path tới file .aip (Advanced Installer project), relative từ root repo
+  // Nếu không đặt: service tự scan toàn bộ repo tìm file .aip đầu tiên
+  "aipFile": "installer/MyApp.aip",
+
+  // Path tới file .exe chính của app, dùng để đọc version/metadata qua PowerShell
+  // Relative từ root repo
+  // Nếu không đặt: service scan các thư mục APPDIRFiles, bin/Release, bin/x64/Release, ...
+  "mainExe": "APPDIRFiles/MyApp.exe",
+
+  // Tên file MSI output (không có đường dẫn) — giúp pre-build skip check chính xác hơn
+  // Có thể dùng placeholder {version} — service sẽ thay bằng version thực
+  // Nếu không đặt: tự sinh theo pattern "{appName}.v{version}.msi"
+  "msiFileName": "Setup-MyApp.v{version}.msi",
+
+  // Tên app hiển thị trong installer (ProductName)
+  // Nếu không đặt: đọc từ .exe metadata (assemblyMeta.productName)
+  "appName": "My Application",
+
+  // Tiêu đề wizard (SetupTitle) — nếu khác appName
+  // Nếu không đặt: dùng appName
+  "setupTitle": "My Application Setup",
+
+  // Version cố định — chỉ dùng khi không muốn đọc version từ .exe
+  // Thông thường KHÔNG nên đặt — để service tự đọc từ exe
+  // "version": "1.0.0.0",
+
+  // Lệnh advinst bổ sung — mảng string, mỗi lệnh 1 phần tử
+  // Thêm sau các lệnh chuẩn và trước /Build
+  // Xem: https://www.advancedinstaller.com/user-guide/command-line.html
+  "extraCommands": [
+    "/SetProperty INSTALLDIR=[ProgramFilesFolder]MyCompany\\MyApp",
+    "/SetProperty MANUFACTURER=My Company Ltd"
+  ]
+}

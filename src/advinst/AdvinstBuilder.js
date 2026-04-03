@@ -7,9 +7,8 @@
 "use strict";
 
 const { spawn }  = require("child_process");
-const fs         = require("path");
+const fs         = require("fs");                        // ✅ FIX: was require("path")
 const path       = require("path");
-const fss        = require("fs");
 
 const logger               = require("../utils/logger");
 const { MACHINE_ID }       = require("../utils/machineId");
@@ -95,14 +94,14 @@ class AdvinstBuilder {
 
       // ── Step 4: Clone file .aip vào buildTmpDir ────────────────────────────
       const clonedAipPath = path.join(buildTmpDir, path.basename(resolved.aipFilePath));
-      fss.copyFileSync(resolved.aipFilePath, clonedAipPath);
+      fs.copyFileSync(resolved.aipFilePath, clonedAipPath);
       logger.debug("[AdvinstBuilder] .aip cloned to buildTmpDir", { ...ctx, clonedAipPath });
 
       // ── Step 5: Sinh command file ──────────────────────────────────────────
       const cmdConfig = { ...resolved, aipFilePath: clonedAipPath };
       const cmdContent = this.generator.generate(cmdConfig);
       const cmdFilePath = path.join(buildTmpDir, "build-cmd.txt");
-      fss.writeFileSync(cmdFilePath, cmdContent, { encoding: "utf8" });
+      fs.writeFileSync(cmdFilePath, cmdContent, { encoding: "utf8" });
       logger.debug("[AdvinstBuilder] Command file written", { ...ctx, cmdFilePath });
 
       // ── Step 6: Chạy advinst.exe ──────────────────────────────────────────
