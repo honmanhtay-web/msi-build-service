@@ -1,5 +1,33 @@
 # Path: msi-build-service/CHANGE_LOGS.md
+
 # Purpose: Lịch sử thay đổi kỹ thuật (dev-facing) — entry mới nhất ở đầu file
+
+---
+
+## [2026-04-03] — Phase 5: Test scripts và Windows service installer
+
+### Added
+
+#### Scripts — Test
+
+- `scripts/test-firebase-connection.js` — Kiểm tra env vars, parse service account, init Firebase, test read/write/delete build-queue; exit 0 nếu pass
+- `scripts/test-simulate-job.js` — Tạo job `pending` trên Firebase qua CLI (`--repoId`, `--repoUrl`, `--branch`, `--commitSha`); poll real-time qua `onValue()` đợi đến `done`/`failed`/`skipped`; in kết quả từng upload target; timeout 10 phút
+- `scripts/test-clone.js` — Test `CloneManager` độc lập; verify `.git` folder, đếm files, in HEAD commit SHA
+- `scripts/test-advinst-build.js` — Test `AdvinstBuilder` độc lập; verify `advinst.exe` trước khi chạy; in `version`/`msiFileName`/`msiFilePath`/size/assemblyMeta
+- `scripts/test-upload.js` — Test từng adapter: `checkExists` → `upload` → `checkExists` lại; tự tạo file MSI giả 1MB nếu không có `--msiPath`; filter adapter qua `--adapter` hoặc test tất cả enabled
+
+#### Scripts — Windows Service
+
+- `scripts/install-windows-service.js` — Đăng ký `MsiBuildService` qua `node-windows`; auto-start khi Windows boot; restart policy max 5 lần với exponential backoff
+- `scripts/uninstall-windows-service.js` — Stop service rồi uninstall sạch
+
+### Notes
+
+- Tất cả scripts đều dùng color-coded output: xanh = OK, đỏ = FAIL, vàng = WARN, cyan = INFO
+- Scripts test dùng `process.exit(0/1)` để CI/CD có thể detect kết quả
+- `install-windows-service.js` phải chạy với quyền Administrator
+
+---
 
 ---
 
@@ -8,15 +36,18 @@
 ### Added
 
 #### Phase 2 — Git
+
 - `src/git/CloneManager.js` — Shallow clone `--depth=1 --filter=blob:none` lần đầu; incremental fetch + reset lần sau; auto-wipe & re-clone khi corrupt; inject `GIT_TOKEN` vào URL, redact khỏi log
 
 #### Phase 3 — Assembly & Advinst
+
 - `src/assembly/AssemblyReader.js` — Đọc `fileVersion`, `productVersion`, `productName`, `sha256` từ `.exe` qua PowerShell inline script; auto-detect `pwsh` vs `powershell.exe`
 - `src/advinst/ConfigResolver.js` — Merge config ENV → `.aip.json` → `service.config.json` → defaults; 4-level priority detect `advinst.exe`; auto-detect `MainExe` theo convention thư mục
 - `src/advinst/CommandFileGenerator.js` — Pure function sinh command file `.txt` cho `advinst.exe /execute`; không side effect, dễ unit test
 - `src/advinst/AdvinstBuilder.js` — Orchestrate: resolve config → clone `.aip` → gen command file → spawn `advinst.exe` → find `.msi` output; timeout + kill (`BUILD_TIMEOUT_SECONDS`)
 
 #### Phase 4 — Upload
+
 - `src/upload/adapters/BaseAdapter.js` — Abstract class: `getName()`, `checkExists()`, `upload()`; helper `_log()`, `_wrap()`
 - `src/upload/adapters/S3Adapter.js` — AWS S3 multipart upload `@aws-sdk/lib-storage`; hỗ trợ S3-compatible qua `UPLOAD_S3_ENDPOINT`; `HeadObject` để checkExists
 - `src/upload/adapters/OneDriveAdapter.js` — Graph API client credentials flow; small file PUT ≤4MB; large file resumable upload session (chunk 10MB)
@@ -25,9 +56,11 @@
 - `src/upload/UploadManager.js` — `Promise.allSettled` song song; `checkExists()` trước upload; update Firebase ngay từng adapter
 
 #### Entry Point
+
 - `src/index.js` — Wire đầy đủ `runBuildPipeline()`: `CloneManager` → `AdvinstBuilder` → `UploadManager` → `setDone`; xóa placeholder warning
 
 ### Decisions
+
 - `CommandFileGenerator` là pure function để dễ test độc lập với filesystem
 - `AdvinstBuilder` clone file `.aip` vào `buildTmpDir` trước khi modify — không bao giờ sửa file gốc trong repo
 - `UploadManager._buildAdapters()` đọc enable flag từ ENV trước, config file sau — ENV luôn override
@@ -35,6 +68,7 @@
 - `OneDriveAdapter` tự phân nhánh small/large upload dựa trên file size 4MB threshold của Graph API
 
 ### Notes
+
 - Pipeline đầy đủ: `pending` → `claimed` → `building` → `done`/`failed`
 - Tất cả secrets vẫn qua `.env` — không có gì hard-code
 - Phase tiếp theo: scripts test (`test-firebase-connection.js`, `test-simulate-job.js`, etc.)
@@ -44,6 +78,7 @@
 ## [2026-04-03] — Init: Thiết kế kiến trúc và tài liệu hệ thống
 
 ### Added
+
 - `docs/ARCHITECTURE.md` — Kiến trúc tổng thể: luồng trigger → clone → build → upload
 - `docs/PROJECT_STRUCTURE.md` — Cấu trúc thư mục, quy tắc đặt tên, trách nhiệm từng module
 - `docs/AGENT_RULES.md` — Ràng buộc cho AI agent: present_files, header comment, không hard-code
@@ -54,6 +89,7 @@
 - `.gitignore` — Loại trừ .env, .work-dirs, .oAdvBuild, logs
 
 ### Decisions
+
 - Dùng Firebase Transaction để claim job, tránh race condition multi-machine
 - Dùng `Promise.allSettled` cho upload song song — 1 target fail không block target khác
 - Git shallow clone `--depth=1 --filter=blob:none` cho incremental fetch hiệu quả
@@ -62,5 +98,6 @@
 - Refactor `oAdvBuild.js` và `oAssembly.js` thành modules độc lập, bỏ hard-code path và internal deps
 
 ### Notes
+
 - Phase này chỉ là thiết kế và tài liệu — chưa có code thực thi
 - Phase tiếp theo: implement từng module theo thứ tự trong DEPLOYMENT.md mục 6
