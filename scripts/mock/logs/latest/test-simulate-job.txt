@@ -1,0 +1,12 @@
+command: node scripts/test-simulate-job.js --repoId mock-repo --repoUrl https://github.com/example/mock-repo
+exitCode: 0
+----- stdout -----
+[32m[OK][0m Job created at /mock-build-queue/mock-repo/mock-HEAD
+[36m[INFO][0m Job status: done
+[32m[OK][0m Job done! version=1.2.3-mock msi=MockApp-1.2.3-mock.msi
+[32m[OK][0m   Upload[s3]: done → https://mock-s3.local/artifacts/MockApp-1.2.3-mock.msi
+[32m[OK][0m   Upload[onedrive]: done → https://mock-onedrive.local/artifacts/MockApp-1.2.3-mock.msi
+[32m[OK][0m   Upload[gdrive]: done → https://mock-gdrive.local/artifacts/MockApp-1.2.3-mock.msi
+[32m[OK][0m   Upload[nas]: done → https://mock-nas.local/artifacts/MockApp-1.2.3-mock.msi
+----- stderr -----
+(empty)

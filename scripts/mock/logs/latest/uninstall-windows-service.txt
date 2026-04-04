@@ -1,0 +1,10 @@
+command: node scripts/uninstall-windows-service.js
+exitCode: 0
+----- stdout -----
+=== MSI Build Service — Windows Service Uninstaller ===
+
+Service name: MsiBuildService
+
+[32m[OK][0m Mock service uninstalled successfully.
+----- stderr -----
+(empty)

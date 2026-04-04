@@ -114,3 +114,10 @@ coverage/
 # ── Git O-Alias helpers ───────────────────────
 .git-o-config
 .opushforce.message
+
+# Allow committed mock test logs (latest only)
+!scripts/mock/logs/
+scripts/mock/logs/*
+!scripts/mock/logs/latest/
+scripts/mock/logs/latest/*
+!scripts/mock/logs/latest/*.txt

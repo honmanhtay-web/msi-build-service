@@ -9,9 +9,10 @@
 
 "use strict";
 
-require("dotenv").config();
+require("./mock/local-dotenv").config();
 const path = require("path");
 const fs   = require("fs");
+const { requestJson } = require("./mock/http-client");
 
 const CloneManager = require("../src/git/CloneManager");
 
@@ -36,6 +37,21 @@ const parseArgs = () => {
   const commitSha = args.commitSha || "HEAD";
 
   if (!repoUrl) FAIL("--repoUrl is required");
+
+  const mockMode = process.env.MOCK_MODE === "true" || !!process.env.MOCK_SERVER_URL;
+  if (mockMode) {
+    const baseUrl = process.env.MOCK_SERVER_URL || "http://127.0.0.1:4311";
+    const t0 = Date.now();
+    const out = await requestJson(baseUrl, "POST", "/clone", { repoId, repoUrl, branch, commitSha });
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    OK(`Clone/fetch done in ${elapsed}s`);
+    OK(`workDir: ${out.workDir}`);
+    if (!fs.existsSync(out.workDir)) FAIL(`workDir does not exist: ${out.workDir}`);
+    if (!fs.existsSync(path.join(out.workDir, ".git"))) FAIL(".git not found in workDir");
+    OK(`HEAD commit: ${out.head}`);
+    console.log("\n\x1b[32mCloneManager test passed (mock mode).\x1b[0m");
+    process.exit(0);
+  }
 
   INFO(`Testing CloneManager`);
   INFO(`repoId=${repoId} repoUrl=${repoUrl} branch=${branch} commitSha=${commitSha}\n`);

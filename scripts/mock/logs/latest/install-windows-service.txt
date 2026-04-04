@@ -1,0 +1,13 @@
+command: node scripts/install-windows-service.js
+exitCode: 0
+----- stdout -----
+=== MSI Build Service — Windows Service Installer ===
+
+Project root:  /workspace/msi-build-service
+Entry point:   /workspace/msi-build-service/src/index.js
+Service name:  MsiBuildService
+Machine ID:    build-machine
+
+[32m[OK][0m Mock service installed & started.
+----- stderr -----
+(empty)

@@ -1,0 +1,11 @@
+command: node scripts/test-advinst-build.js --workDir /workspace/msi-build-service/.mock-workdirs/mock-repo --repoId mock-repo --pushId mock-push
+exitCode: 0
+----- stdout -----
+[32m[OK][0m Build completed in 0.0s
+[32m[OK][0m version:     1.2.3-mock
+[32m[OK][0m msiFileName: mock-push-MockApp-1.2.3-mock.msi
+[32m[OK][0m msiFilePath: /workspace/msi-build-service/.mock-artifacts/mock-push-MockApp-1.2.3-mock.msi
+
+[32mAdvinstBuilder test passed (mock mode).[0m
+----- stderr -----
+(empty)

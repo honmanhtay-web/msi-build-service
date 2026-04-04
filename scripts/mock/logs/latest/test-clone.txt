@@ -1,0 +1,10 @@
+command: node scripts/test-clone.js --repoId mock-repo --repoUrl https://github.com/example/mock-repo
+exitCode: 0
+----- stdout -----
+[32m[OK][0m Clone/fetch done in 0.0s
+[32m[OK][0m workDir: /workspace/msi-build-service/.mock-workdirs/mock-repo
+[32m[OK][0m HEAD commit: HEAD
+
+[32mCloneManager test passed (mock mode).[0m
+----- stderr -----
+(empty)

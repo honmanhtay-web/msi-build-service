@@ -14,7 +14,7 @@
 "use strict";
 
 const path    = require("path");
-const { Service } = require("node-windows");
+const { requestJson } = require("./mock/http-client");
 
 const SERVICE_NAME        = "MsiBuildService";
 const SERVICE_DESCRIPTION = "MSI Build Service — tự động build và upload MSI từ GitHub push (DHG Pharma)";
@@ -36,6 +36,22 @@ console.log(`Service name:  ${SERVICE_NAME}`);
 console.log(`Machine ID:    ${machineId}`);
 console.log("");
 
+const mockMode = process.env.MOCK_MODE === "true" || !!process.env.MOCK_SERVER_URL;
+if (mockMode) {
+  const baseUrl = process.env.MOCK_SERVER_URL || "http://127.0.0.1:4311";
+  requestJson(baseUrl, "POST", "/service/install", { service: SERVICE_NAME })
+    .then(() => {
+      console.log("\x1b[32m[OK]\x1b[0m Mock service installed & started.");
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error("\x1b[31m[FAIL]\x1b[0m Mock service install error:", err.message);
+      process.exit(1);
+    });
+  return;
+}
+
+const { Service } = require("node-windows");
 const svc = new Service({
   name:        SERVICE_NAME,
   description: SERVICE_DESCRIPTION,

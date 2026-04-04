@@ -5,8 +5,8 @@
 
 "use strict";
 
-require("dotenv").config();
-const admin = require("firebase-admin");
+require("./mock/local-dotenv").config();
+const { requestJson } = require("./mock/http-client");
 
 const OK   = (msg) => console.log(`\x1b[32m[OK]\x1b[0m ${msg}`);
 const FAIL = (msg) => { console.error(`\x1b[31m[FAIL]\x1b[0m ${msg}`); process.exit(1); };
@@ -14,6 +14,16 @@ const INFO = (msg) => console.log(`\x1b[36m[INFO]\x1b[0m ${msg}`);
 
 (async () => {
   INFO("Testing Firebase connection...\n");
+  const mockMode = process.env.MOCK_MODE === "true" || !!process.env.MOCK_SERVER_URL;
+  if (mockMode) {
+    const baseUrl = process.env.MOCK_SERVER_URL || "http://127.0.0.1:4311";
+    const result = await requestJson(baseUrl, "POST", "/firebase/connection-test");
+    OK(`Mock Firebase ready (project_id=${result.projectId})`);
+    OK(`Build queue accessible at /${result.path}`);
+    console.log("\n\x1b[32mAll checks passed (mock mode).\x1b[0m");
+    process.exit(0);
+  }
+  const admin = require("firebase-admin");
 
   // 1. Kiểm tra env vars bắt buộc
   const databaseURL       = process.env.FIREBASE_DATABASE_URL;

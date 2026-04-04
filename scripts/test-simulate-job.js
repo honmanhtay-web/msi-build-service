@@ -9,8 +9,8 @@
 
 "use strict";
 
-require("dotenv").config();
-const admin = require("firebase-admin");
+require("./mock/local-dotenv").config();
+const { requestJson } = require("./mock/http-client");
 
 const OK   = (msg) => console.log(`\x1b[32m[OK]\x1b[0m ${msg}`);
 const FAIL = (msg) => { console.error(`\x1b[31m[FAIL]\x1b[0m ${msg}`); process.exit(1); };
@@ -88,6 +88,20 @@ const waitForCompletion = (db, buildQueuePath, repoId, pushId, timeoutMs = 60000
   const commitSha = args.commitSha || "HEAD";
 
   if (!repoUrl) FAIL("--repoUrl is required. Example: --repoUrl https://github.com/org/repo");
+
+  const mockMode = process.env.MOCK_MODE === "true" || !!process.env.MOCK_SERVER_URL;
+  if (mockMode) {
+    const baseUrl = process.env.MOCK_SERVER_URL || "http://127.0.0.1:4311";
+    const mockResult = await requestJson(baseUrl, "POST", "/simulate-job", { repoId, repoUrl, branch, commitSha });
+    OK(`Job created at /mock-build-queue/${mockResult.repoId}/${mockResult.pushId}`);
+    INFO(`Job status: ${mockResult.status}`);
+    OK(`Job done! version=${mockResult.result.version} msi=${mockResult.result.msiFileName}`);
+    for (const [target, u] of Object.entries(mockResult.result.uploads || {})) {
+      OK(`  Upload[${target}]: ${u.status} → ${u.url}`);
+    }
+    process.exit(0);
+  }
+  const admin = require("firebase-admin");
 
   const buildQueuePath = process.env.FIREBASE_BUILD_QUEUE_PATH || "build-queue";
   const pushId         = makePushId(commitSha);

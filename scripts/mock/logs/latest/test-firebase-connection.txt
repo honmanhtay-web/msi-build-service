@@ -1,0 +1,11 @@
+command: node scripts/test-firebase-connection.js
+exitCode: 0
+----- stdout -----
+[36m[INFO][0m Testing Firebase connection...
+
+[32m[OK][0m Mock Firebase ready (project_id=mock-project)
+[32m[OK][0m Build queue accessible at /build-queue
+
+[32mAll checks passed (mock mode).[0m
+----- stderr -----
+(empty)

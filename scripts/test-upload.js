@@ -11,15 +11,11 @@
 
 "use strict";
 
-require("dotenv").config();
+require("./mock/local-dotenv").config();
 const fs   = require("fs");
 const path = require("path");
 const os   = require("os");
-
-const S3Adapter          = require("../src/upload/adapters/S3Adapter");
-const OneDriveAdapter    = require("../src/upload/adapters/OneDriveAdapter");
-const GoogleDriveAdapter = require("../src/upload/adapters/GoogleDriveAdapter");
-const SynologyAdapter    = require("../src/upload/adapters/SynologyAdapter");
+const { requestJson } = require("./mock/http-client");
 
 const OK   = (msg) => console.log(`\x1b[32m[OK]\x1b[0m ${msg}`);
 const FAIL = (msg) => console.error(`\x1b[31m[FAIL]\x1b[0m ${msg}`);
@@ -46,11 +42,17 @@ const createFakeMsi = () => {
   return tmpPath;
 };
 
-const ALL_ADAPTERS = {
-  s3:       () => new S3Adapter(),
-  onedrive: () => new OneDriveAdapter(),
-  gdrive:   () => new GoogleDriveAdapter(),
-  nas:      () => new SynologyAdapter(),
+const buildAdapters = () => {
+  const S3Adapter = require("../src/upload/adapters/S3Adapter");
+  const OneDriveAdapter = require("../src/upload/adapters/OneDriveAdapter");
+  const GoogleDriveAdapter = require("../src/upload/adapters/GoogleDriveAdapter");
+  const SynologyAdapter = require("../src/upload/adapters/SynologyAdapter");
+  return {
+    s3: () => new S3Adapter(),
+    onedrive: () => new OneDriveAdapter(),
+    gdrive: () => new GoogleDriveAdapter(),
+    nas: () => new SynologyAdapter(),
+  };
 };
 
 /** Kiểm tra adapter có được enable qua ENV không */
@@ -113,6 +115,32 @@ const testAdapter = async (adapter, msiFilePath, msiFileName) => {
   return { name, success: true, url: result.url };
 };
 
+const testMockAdapter = async (name, msiFilePath, msiFileName, baseUrl) => {
+  SEP();
+  INFO(`Testing adapter: ${name.toUpperCase()} (mock)`);
+  let exists = false;
+  try {
+    const r = await requestJson(baseUrl, "POST", "/upload/check-exists", { adapter: name, fileName: msiFileName });
+    exists = !!r.exists;
+    OK(`checkExists(${msiFileName}) → ${exists}`);
+  } catch (err) {
+    FAIL(`checkExists failed: ${err.message}`);
+    return { name, success: false, error: err.message };
+  }
+
+  if (exists) return { name, success: true, skipped: true };
+
+  try {
+    const size = fs.statSync(msiFilePath).size;
+    const r = await requestJson(baseUrl, "POST", "/upload", { adapter: name, fileName: msiFileName, size });
+    OK(`upload done → url=${r.url} size=${r.size} bytes`);
+    return { name, success: true, url: r.url };
+  } catch (err) {
+    FAIL(`upload failed: ${err.message}`);
+    return { name, success: false, error: err.message };
+  }
+};
+
 (async () => {
   const args        = parseArgs();
   const onlyAdapter = args.adapter || "";
@@ -132,11 +160,14 @@ const testAdapter = async (adapter, msiFilePath, msiFileName) => {
 
   const msiFileName = path.basename(msiFilePath);
   INFO(`MSI filename: ${msiFileName}\n`);
+  const mockMode = process.env.MOCK_MODE === "true" || !!process.env.MOCK_SERVER_URL;
+  const mockBaseUrl = process.env.MOCK_SERVER_URL || "http://127.0.0.1:4311";
+  const ALL_ADAPTERS = mockMode ? { s3: null, onedrive: null, gdrive: null, nas: null } : buildAdapters();
 
   // Chọn adapters cần test
   const adapterNames = onlyAdapter
     ? [onlyAdapter]
-    : Object.keys(ALL_ADAPTERS).filter(isEnabled);
+    : (mockMode ? Object.keys(ALL_ADAPTERS) : Object.keys(ALL_ADAPTERS).filter(isEnabled));
 
   if (adapterNames.length === 0) {
     WARN("No adapters are enabled. Set UPLOAD_*_ENABLED=true in .env");
@@ -148,12 +179,13 @@ const testAdapter = async (adapter, msiFilePath, msiFileName) => {
 
   const results = [];
   for (const name of adapterNames) {
-    if (!ALL_ADAPTERS[name]) {
+    if (!mockMode && !ALL_ADAPTERS[name]) {
       FAIL(`Unknown adapter: ${name}`);
       continue;
     }
-    const adapter = ALL_ADAPTERS[name]();
-    const r = await testAdapter(adapter, msiFilePath, msiFileName);
+    const r = mockMode
+      ? await testMockAdapter(name, msiFilePath, msiFileName, mockBaseUrl)
+      : await testAdapter(ALL_ADAPTERS[name](), msiFilePath, msiFileName);
     results.push(r);
   }
 

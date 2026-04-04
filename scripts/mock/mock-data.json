@@ -1,0 +1,18 @@
+{
+  "repo": {
+    "repoId": "mock-repo",
+    "repoUrl": "https://github.com/example/mock-repo",
+    "branch": "main",
+    "commitSha": "mockcommit1234567"
+  },
+  "build": {
+    "version": "1.2.3-mock",
+    "msiFileName": "MockApp-1.2.3-mock.msi"
+  },
+  "uploads": {
+    "s3": "https://mock-s3.local/artifacts/MockApp-1.2.3-mock.msi",
+    "onedrive": "https://mock-onedrive.local/artifacts/MockApp-1.2.3-mock.msi",
+    "gdrive": "https://mock-gdrive.local/artifacts/MockApp-1.2.3-mock.msi",
+    "nas": "https://mock-nas.local/artifacts/MockApp-1.2.3-mock.msi"
+  }
+}

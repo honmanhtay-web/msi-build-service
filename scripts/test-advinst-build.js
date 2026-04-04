@@ -9,9 +9,10 @@
 
 "use strict";
 
-require("dotenv").config();
+require("./mock/local-dotenv").config();
 const path = require("path");
 const fs   = require("fs");
+const { requestJson } = require("./mock/http-client");
 
 const AdvinstBuilder = require("../src/advinst/AdvinstBuilder");
 
@@ -35,7 +36,22 @@ const parseArgs = () => {
   const pushId  = args.pushId  || `test-${Date.now()}`;
 
   if (!workDir) FAIL("--workDir is required. Run test-clone.js first to get a workDir.");
-  if (!fs.existsSync(workDir)) FAIL(`workDir does not exist: ${workDir}`);
+  const mockMode = process.env.MOCK_MODE === "true" || !!process.env.MOCK_SERVER_URL;
+  if (!mockMode && !fs.existsSync(workDir)) FAIL(`workDir does not exist: ${workDir}`);
+
+  if (mockMode) {
+    const baseUrl = process.env.MOCK_SERVER_URL || "http://127.0.0.1:4311";
+    const t0 = Date.now();
+    const result = await requestJson(baseUrl, "POST", "/build", { repoId, pushId, workDir });
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    OK(`Build completed in ${elapsed}s`);
+    OK(`version:     ${result.version}`);
+    OK(`msiFileName: ${result.msiFileName}`);
+    OK(`msiFilePath: ${result.msiFilePath}`);
+    if (!fs.existsSync(result.msiFilePath)) FAIL(`MSI file not found at: ${result.msiFilePath}`);
+    console.log("\n\x1b[32mAdvinstBuilder test passed (mock mode).\x1b[0m");
+    process.exit(0);
+  }
 
   INFO(`Testing AdvinstBuilder`);
   INFO(`workDir=${workDir}`);
